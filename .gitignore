@@ -1,0 +1,10 @@
+# Working files written by the trader-* skills (config, portfolio, orders, state)
+trader/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Secrets
+.env

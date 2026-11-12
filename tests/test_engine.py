@@ -122,10 +122,85 @@ class Judge(unittest.TestCase):
         self.assertTrue(cand["veto"])
         self.assertEqual(cand["score"], 0)
 
+    def test_charlie_moves_the_score_and_more_when_trusted(self):
+        cfg = config.load(path="/nonexistent")
+        n = {"AAA": self.pitch("neeli", 70)}
+
+        def score(conf, charlie_trust):
+            review = {"AAA": {"symbol": "AAA", "confidence": conf, "call": "take" if conf >= 58 else "skip", "pros": [], "cons": []}}
+            return agents.moothon_rank({}, n, {"AAA": []}, {"chathan": 50, "neeli": 50, "charlie": charlie_trust}, cfg, review)[0]
+
+        plain = self.rank(n=self.pitch("neeli", 70))["score"]
+        self.assertGreater(score(85, 50)["score"], plain)
+        self.assertLess(score(15, 50)["score"], plain)
+        self.assertEqual(score(50, 50)["score"], plain)
+        self.assertGreater(score(85, 80)["score"], score(85, 20)["score"])
+        self.assertEqual(score(85, 50)["base_score"], plain)
+
     def test_trust_changes_how_much_chathan_counts(self):
         low = self.rank(c=self.pitch("chathan", 80), trust={"chathan": 30, "neeli": 50})
         high = self.rank(c=self.pitch("chathan", 80), trust={"chathan": 75, "neeli": 50})
         self.assertGreater(high["score"], low["score"])
+
+
+class Learning(unittest.TestCase):
+    def brain(self):
+        from parunth.learning import Brain
+        return Brain(config.load(path="/nonexistent"))
+
+    def test_chathan_leans_on_what_pays_and_raises_his_bar_when_losing(self):
+        b = self.brain()
+        for _ in range(12):
+            b.pick_closed("chathan", 2.0, {"keys": ["orb"]}, 0)
+            b.pick_closed("chathan", -1.0, {"keys": ["hod"]}, 0)
+        self.assertGreater(b.chathan["w"]["orb"], 1.2)
+        self.assertLess(b.chathan["w"]["hod"], 0.8)
+        b2 = self.brain()
+        for _ in range(8):
+            b2.pick_closed("chathan", -1.0, {"keys": ["up"]}, 0)
+        self.assertGreater(b2.chathan["bar"], 35)
+
+    def test_neeli_drops_a_check_that_blocks_winners_and_brings_it_back(self):
+        b = self.brain()
+        for _ in range(8):
+            b.pick_closed("chathan", 2.0, {"keys": [], "n_obj": ["light_vol", "downtrend"]}, 0)
+        self.assertIn("light_vol", b.neeli["waived"])
+        self.assertNotIn("downtrend", b.neeli["waived"])     # severe checks are never dropped
+        for _ in range(12):
+            b.pick_closed("chathan", -1.0, {"keys": [], "n_obj": ["light_vol"]}, 0)
+        self.assertNotIn("light_vol", b.neeli["waived"])
+        self.assertTrue(any(l["who"] == "neeli" for l in b.lessons))
+
+    def test_a_waived_check_no_longer_stops_neeli(self):
+        cfg = config.load(path="/nonexistent")
+        f = {"last": 100.0, "t": 0, "minutes": 60, "or_ready": True, "or_high": 99.5, "or_low": 98.5, "vwap": 99.4,
+             "prev_close": 98.0, "sma20": 96.0, "sma50": 94.0, "rsi": 60.0, "atr_d": 3.0, "atr5": 0.15, "relvol": 0.7,
+             "day_low": 98.4, "day_high": 100.0, "chg": 0.02}
+        mkt = {"chg": 0.002, "last": 10.0, "vwap": 9.9}
+        pitch, obj = agents.neeli("AAA", f, mkt, cfg)
+        self.assertIsNone(pitch)
+        self.assertEqual([o[2] for o in obj], ["light_vol"])
+        pitch, obj = agents.neeli("AAA", f, mkt, cfg, {"waived": {"light_vol"}})
+        self.assertIsNotNone(pitch)
+        self.assertEqual(obj[0][0], "waived")
+
+    def test_charlie_reweights_factors(self):
+        b = self.brain()
+        for _ in range(12):
+            b.pick_closed("neeli", 1.5, {"factors": [("clean", 1), ("midday", -1)]}, 0)
+        self.assertGreater(b.charlie["w"]["clean"], 1.2)      # said yes, it won
+        self.assertLess(b.charlie["w"]["midday"], 0.8)        # warned, it won anyway
+
+    def test_moothon_moves_his_bar(self):
+        b = self.brain()
+        start = b.moothon["bar"]
+        b.moothon["since"] = 10
+        b.judge_scored([{"kind": "trade", "r": -1.0}] * 6, 0)
+        self.assertGreater(b.moothon["bar"], start)
+        b = self.brain()
+        b.moothon["since"] = 10
+        b.judge_scored([{"kind": "pass", "r": -0.8}] * 10, 0)
+        self.assertLess(b.moothon["bar"], start)
 
 
 class Simulation(unittest.TestCase):
@@ -189,6 +264,14 @@ class Simulation(unittest.TestCase):
         self.assertEqual(gbp.signed_money(12.5), "+\u00a310.00")
         self.assertEqual(gbp.snapshot()["money"]["rate"], 1.25)
 
+    def test_took_count_matches_the_trades_each_agent_backed(self):
+        snap = self.eng.snapshot()
+        for name in ("chathan", "neeli"):
+            backed = sum(1 for t in self.eng.trades if t["basis"] in (name, "both"))
+            self.assertEqual(snap["agents"][name]["taken"], backed)
+        self.assertEqual(sum(1 for t in self.eng.trades if t["basis"] == "both") + len(self.eng.trades),
+                         snap["agents"]["chathan"]["taken"] + snap["agents"]["neeli"]["taken"])
+
     def test_limits_hold(self):
         cfg = self.eng.cfg
         eng = make_engine()
@@ -200,12 +283,15 @@ class Simulation(unittest.TestCase):
 
     def test_trust_and_snapshot(self):
         snap = self.eng.snapshot()
-        for name in ("chathan", "neeli", "moothon"):
+        self.assertGreater(snap["agents"]["charlie"]["n"], 0)
+        for name in ("chathan", "neeli", "charlie", "moothon"):
             self.assertTrue(0 <= snap["agents"][name]["trust"] <= 100)
         self.assertGreater(snap["agents"]["chathan"]["n"], 0)
         self.assertEqual(snap["account"]["n"], len(self.eng.trades))
         self.assertTrue(math.isfinite(snap["account"]["equity"]))
         self.assertTrue(snap["clock"]["caught_up"])
+        self.assertIn("lessons", snap["brain"])
+        self.assertEqual(snap["rules"]["take_score"], snap["brain"]["moothon"]["bar"])
 
     def test_live_bars_extend_the_run(self):
         eng = make_engine(sessions=3)

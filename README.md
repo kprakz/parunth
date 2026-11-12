@@ -1,11 +1,13 @@
 # parunth
 
-A day-trading dashboard run by three agents, on virtual money only.
+A day-trading dashboard run by four agents, on virtual money only.
 
 - **Chathan** is always eager to invest. He chases whatever is moving.
 - **Neeli** takes calculated risk. Every one of her checks must pass or she sits out.
-- **Moothon** is the judge. He hears both, weighs each by the trust they have earned,
-  decides what the virtual money buys, and says when to get out.
+- **Charlie** is the consultant. He pitches nothing; he weighs each idea the other two
+  bring and tells Moothon how confident he is that it should be taken.
+- **Moothon** is the judge. He hears all three, weighs each by the trust they have
+  earned, decides what the virtual money buys, and says when to get out.
 
 Each agent has a trust score (0 to 100, starting at 50) that moves with the results of
 its own calls.

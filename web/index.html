@@ -9,8 +9,8 @@
 <body>
 <header class="top">
   <div class="brand">
-    <span class="logo" aria-hidden="true"></span>
-    <div><strong>Parunth</strong><small>Three agents. Virtual money.</small></div>
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 28 14 16 29 4 14Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M4 14h24M16 3v26" stroke="currentColor" stroke-width="2"/></svg>
+    <div><strong>PARUNTH</strong><small>Four agents. Virtual money.</small></div>
   </div>
   <div class="status" id="status"><span class="dot"></span><span id="statusText">Loading</span></div>
   <div class="controls">
@@ -38,54 +38,112 @@
   </div>
   <div class="progress" aria-hidden="true"><i id="progressBar"></i></div>
 </header>
+<div class="tape" aria-label="Live prices"><div class="tape-run" id="tapeRun"></div></div>
 
 <main id="app" hidden>
-  <section class="hero card">
-    <div class="hero-figure">
-      <div class="label">Virtual portfolio, run by Moothon</div>
-      <div class="hero-value" id="equity">$0</div>
-      <div class="delta" id="equityDelta"></div>
-      <div class="sub" id="equitySub"></div>
+  <section class="floor">
+    <aside class="card comms">
+      <div class="card-head"><h2>Live comms</h2><span class="hint">The agents, as they speak</span></div>
+      <div class="feed" id="feed"></div>
+    </aside>
+
+    <article class="card scene-card">
+      <div class="card-head">
+        <h2>The floor</h2>
+        <div class="tally" id="tally"></div>
+      </div>
+      <div class="scene" id="scene">
+        <div id="sceneLabels"></div>
+        <div class="fx" id="fx" aria-hidden="true"></div>
+        <p class="no3d-note">The 3D floor needs WebGL, which this browser has switched off.</p>
+      </div>
+      <p class="hint scene-key">The dome glows green when most of the watchlist is up and red when most is down. Each spike is a stock; longer means a bigger move. Lines of light show who is pointing at what. Click a stock to chart it.</p>
+    </article>
+
+    <aside class="stack">
+      <article class="card hero">
+        <div class="label">Virtual portfolio / run by Moothon</div>
+        <div class="hero-value" id="equity">0</div>
+        <div class="delta" id="equityDelta"></div>
+        <div class="sub" id="equitySub"></div>
+      </article>
+      <article class="card">
+        <div class="legend" id="curveLegend"></div>
+        <div class="chart short" id="curveChart"></div>
+      </article>
+      <article class="card strip" id="kpis" aria-label="Portfolio statistics"></article>
+    </aside>
+  </section>
+
+  <section class="card stage" id="stage" aria-label="The council">
+    <div class="card-head">
+      <h2>The council</h2>
+      <span class="hint">Chathan and Neeli pitch. Charlie weighs each idea. Moothon rules.</span>
     </div>
-    <div class="hero-chart">
-      <div class="legend" id="curveLegend"></div>
-      <div class="chart" id="curveChart"></div>
+    <div class="stage-grid">
+      <div class="col pitchers">
+        <h3>01 / They pitch</h3>
+        <div class="actor row" data-agent="chathan"><div id="st-chathan"></div><div class="bubble" id="bub-chathan"></div></div>
+        <div class="actor row" data-agent="neeli"><div id="st-neeli"></div><div class="bubble" id="bub-neeli"></div></div>
+      </div>
+      <div class="lane" id="lane-a" aria-hidden="true"><div class="track" id="track-chathan"></div><div class="track" id="track-neeli"></div></div>
+      <div class="col" data-agent="charlie">
+        <h3>02 / Charlie weighs</h3>
+        <div class="actor row"><div id="st-charlie"></div><div id="weights"></div></div>
+      </div>
+      <div class="lane" id="lane-b" aria-hidden="true"><div class="track" id="track-charlie"></div></div>
+      <div class="col" data-agent="moothon">
+        <h3>03 / Moothon rules</h3>
+        <div class="actor row"><div id="st-moothon"></div><div class="bubble" id="bub-moothon"></div></div>
+        <div id="stamp"></div>
+      </div>
     </div>
   </section>
 
-  <section class="kpis" id="kpis"></section>
-
-  <h2 class="section-title">The council</h2>
-  <section class="council">
-    <article class="card agent" id="agent-chathan" data-agent="chathan"></article>
-    <article class="card agent" id="agent-neeli" data-agent="neeli"></article>
-    <article class="card agent judge" id="agent-moothon" data-agent="moothon"></article>
+  <section class="split wide-left">
+    <article class="card board">
+      <div class="card-head">
+        <h2>Market board</h2>
+        <div class="tally" id="tally2"></div>
+      </div>
+      <div class="tiles" id="tiles-bull"></div>
+      <div class="rule" aria-hidden="true"></div>
+      <div class="tiles" id="tiles-bear"></div>
+    </article>
+    <div class="stack">
+      <article class="card">
+        <div class="card-head">
+          <h2 id="chartTitle">Price</h2>
+          <button class="btn small" id="followBtn" type="button">Follow Moothon</button>
+        </div>
+        <div class="legend" id="priceLegend"></div>
+        <div class="chart tall" id="priceChart"></div>
+      </article>
+      <article class="card">
+        <div class="card-head"><h2>Open positions</h2><span class="hint" id="posHint"></span></div>
+        <div id="positions"></div>
+      </article>
+    </div>
   </section>
 
   <section class="split">
     <article class="card">
       <div class="card-head">
-        <h3 id="chartTitle">Price</h3>
-        <div class="legend" id="priceLegend"></div>
+        <h2>Trust scores</h2>
+        <span class="hint">Every agent starts at 50. The score moves with the results of that agent's own calls.</span>
       </div>
-      <div class="chart tall" id="priceChart"></div>
-      <div class="chips" id="watch"></div>
+      <div class="table-wrap" id="scoreboard"></div>
     </article>
     <article class="card">
-      <div class="card-head"><h3>Open positions</h3><span class="hint" id="posHint"></span></div>
-      <div id="positions"></div>
+      <div class="card-head"><h2>What they have learned</h2><span class="hint" id="lessonHint"></span></div>
+      <div id="minds"></div>
+      <div class="feed lessons" id="lessons"></div>
     </article>
   </section>
 
-  <section class="split">
-    <article class="card">
-      <div class="card-head"><h3>Closed trades</h3><span class="hint" id="tradeHint"></span></div>
-      <div class="table-wrap" id="trades"></div>
-    </article>
-    <article class="card">
-      <div class="card-head"><h3>What they are saying</h3></div>
-      <div class="feed" id="feed"></div>
-    </article>
+  <section class="card">
+    <div class="card-head"><h2>Closed trades</h2><span class="hint" id="tradeHint"></span></div>
+    <div class="table-wrap tall" id="trades"></div>
   </section>
 
   <footer class="foot">
@@ -97,5 +155,6 @@
 <div id="splash" class="splash"><div class="spinner"></div><p id="splashText">Loading market history</p></div>
 <div id="tip" class="tip" hidden></div>
 <script src="app.js"></script>
+<script type="module" src="scene.js"></script>
 </body>
 </html>

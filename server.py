@@ -25,7 +25,10 @@ STATIC = {
     "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "application/javascript; charset=utf-8"),
+    "/scene.js": ("scene.js", "application/javascript; charset=utf-8"),
+    "/vendor/three.module.min.js": ("vendor/three.module.min.js", "application/javascript; charset=utf-8"),
 }
+AVATARS = {"/avatars/%s.jpg" % name: "%s.jpg" % name for name in ("chathan", "neeli", "charlie", "moothon")}
 CURRENCY_SYMBOLS = {"USD": "$", "GBP": "\u00a3", "EUR": "\u20ac", "INR": "\u20b9"}
 
 
@@ -157,11 +160,11 @@ def make_handler(runner):
         def log_message(self, *args):
             pass
 
-        def _send(self, code, body, ctype):
+        def _send(self, code, body, ctype, cache="no-store"):
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
+            self.send_header("Cache-Control", cache)
             self.end_headers()
             self.wfile.write(body)
 
@@ -176,7 +179,12 @@ def make_handler(runner):
             if url.path in STATIC:
                 name, ctype = STATIC[url.path]
                 with open(os.path.join(WEB, name), "rb") as fh:
-                    return self._send(200, fh.read(), ctype)
+                    return self._send(200, fh.read(), ctype, "max-age=86400" if name.startswith("vendor/") else "no-store")
+            if url.path in AVATARS:   # optional pictures; the page falls back to initials
+                path = os.path.join(WEB, "avatars", AVATARS[url.path])
+                if os.path.exists(path):
+                    with open(path, "rb") as fh:
+                        return self._send(200, fh.read(), "image/jpeg", "max-age=3600")
             self._json(404, {"error": "not found"})
 
         def do_POST(self):

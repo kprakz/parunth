@@ -16,10 +16,11 @@ from zoneinfo import ZoneInfo
 
 from . import agents
 from .indicators import day_context, features
+from .learning import Brain
 from .scoring import book_stats, record, trust_score
 
 BAR = 300
-AGENTS = ("chathan", "neeli", "moothon")
+AGENTS = ("chathan", "neeli", "charlie", "moothon")
 
 
 def usd(x):
@@ -115,12 +116,13 @@ class Engine:
             self.trust = {a: 50.0 for a in AGENTS}
             self.trust_hist = {a: [50.0] for a in AGENTS}
             self.passes = {"good": 0, "missed": 0}
+            self.brain = Brain(self.cfg)   # what the agents have learned so far
             self.day = None
             self.today, self.ctx, self.warm = {}, {}, {}
             self.daystate = {}
             self.last_px = {}
             self.last_feats = {}
-            self.view = {"chathan": {}, "neeli": {}, "verdict": None, "ranked": []}
+            self.view = {"chathan": {}, "neeli": {}, "charlie": {}, "verdict": None, "ranked": []}
             self.now = None
             self.bench_start = None
             self.peak = float(cash)
@@ -247,7 +249,9 @@ class Engine:
             elif o["kind"] == "shadow":
                 self.shadows[o["agent"]].append({
                     "symbol": o["symbol"], "entry": px, "stop": px - o["risk"],
-                    "target": px + o["rr"] * o["risk"], "risk": o["risk"], "taken": o["taken"]})
+                    "target": px + o["rr"] * o["risk"], "risk": o["risk"], "taken": o["taken"],
+                    "charlie": o.get("charlie"), "keys": o.get("keys"), "n_obj": o.get("n_obj"),
+                    "factors": o.get("factors")})
             else:
                 fill = px * (1 + slip)
                 shares = self.shares_for(min(o["shares"], self.cash / fill))
@@ -310,17 +314,30 @@ class Engine:
             "t_in": pos["t"], "t_out": self.now, "pnl": pnl, "r": r, "reason": reason,
             "tag": tag, "basis": pos["basis"]})
         self._score("moothon", {"r": r, "kind": "trade", "symbol": sym})
+        self._learned(self.brain.judge_scored(self.outcomes["moothon"], self.now))
         self.say("moothon", "sell-win" if pnl >= 0 else "sell-loss", "Sold %s %s at %s. %s. %s (%+.1fR)" % (
             qty(pos["shares"]), sym, usd(px), reason, self.signed_money(pnl), r))
+
+    def _learned(self, lessons):
+        for who, text in lessons:
+            self.say(who, "learn", "Lesson: " + text)
 
     def _close_shadow(self, agent, sh, px):
         r = (px - sh["entry"]) / sh["risk"]
         self._score(agent, {"r": r, "symbol": sh["symbol"], "taken": sh["taken"]})
+        self._learned(self.brain.pick_closed(agent, r, sh, self.now))
+        conf = sh.get("charlie")
+        if conf is not None and abs(conf - 50) >= 8:
+            # Charlie is scored as if he had bet his confidence: a firm "take" on a
+            # winner or a firm "don't" on a loser pays; being firmly wrong costs.
+            self._score("charlie", {"r": (conf - 50) / 50.0 * max(-1.5, min(3.0, r)), "symbol": sh["symbol"],
+                                    "call": "take" if conf > 50 else "skip"})
         if not sh["taken"]:
             # Judging the judge: a pass that would have lost is a good call,
             # a pass that would have won is a miss. Half weight either way.
             self.passes["good" if r <= 0 else "missed"] += 1
             self._score("moothon", {"r": max(-1.5, min(1.5, -0.5 * r)), "kind": "pass", "symbol": sh["symbol"]})
+            self._learned(self.brain.judge_scored(self.outcomes["moothon"], self.now))
 
     def _close_all(self, bars):
         slip = self.cfg["slippage_bps"] / 10000.0
@@ -334,6 +351,7 @@ class Engine:
         self.view["verdict"] = {"action": "WAIT", "reason": "The session is over. Everything is closed."}
         self.view["chathan"] = {}
         self.view["neeli"] = {}
+        self.view["charlie"] = {}
         self.view["ranked"] = []
 
     # --------------------------------------------------------------- moothon
@@ -380,16 +398,25 @@ class Engine:
             f = feats.get(sym)
             if not f:
                 continue
-            p = agents.chathan(sym, f, cfg)
+            p = agents.chathan(sym, f, cfg, self.brain.chathan)
             if p:
                 c_p[sym] = p
-            p, obj = agents.neeli(sym, f, mkt, cfg)
+            p, obj = agents.neeli(sym, f, mkt, cfg, self.brain.neeli)
             reviews[sym] = obj
             if p:
                 n_p[sym] = p
         c_top = max(c_p.values(), key=lambda p: (p["conviction"], p["symbol"]), default=None)
         n_top = max(n_p.values(), key=lambda p: (p["conviction"], p["symbol"]), default=None)
-        ranked = agents.moothon_rank(c_p, n_p, reviews, self.trust, cfg)
+        # Charlie weighs every idea on the table before Moothon sees it
+        above = [1 for s in self.symbols if s in feats and feats[s]["last"] > feats[s]["vwap"]]
+        seen_syms = [s for s in self.symbols if s in feats]
+        breadth = (len(above) / float(len(seen_syms))) if seen_syms else None
+        consult = {}
+        for sym in set(c_p) | set(n_p):
+            n, c = n_p.get(sym), c_p.get(sym)
+            plan = {"risk": n["risk"], "rr": 2.5 if c else n["rr"]} if n else {"risk": c["risk"], "rr": c["rr"]}
+            consult[sym] = agents.charlie(sym, feats[sym], mkt, breadth, plan, cfg, self.brain.charlie)
+        ranked = agents.moothon_rank(c_p, n_p, reviews, self.trust, cfg, consult)
 
         # What the two say out loud
         if c_top and self.once(("c", c_top["symbol"])):
@@ -400,15 +427,25 @@ class Engine:
                 n_top["symbol"], cap(", ".join(n_top["reasons"][:4]))))
         doubt = None
         if c_top and c_top["symbol"] not in n_p:
-            objs = reviews.get(c_top["symbol"]) or []
+            objs = [o for o in (reviews.get(c_top["symbol"]) or []) if o[0] != "waived"]
             if objs:
-                sev = [t for s, t in objs if s == "severe"] or [objs[0][1]]
-                doubt = {"symbol": c_top["symbol"], "text": sev[0], "all": [t for _, t in objs]}
+                sev = [o[1] for o in objs if o[0] == "severe"] or [objs[0][1]]
+                doubt = {"symbol": c_top["symbol"], "text": sev[0], "all": [o[1] for o in objs]}
                 if self.once(("no", c_top["symbol"])):
                     self.say("neeli", "object", "Not %s for me: %s." % (c_top["symbol"], sev[0]))
         self.view["chathan"] = {"pitch": c_top, "count": len(c_p)}
         self.view["neeli"] = {"pitch": n_top, "count": len(n_p), "doubt": doubt}
         self.view["ranked"] = [{k: c[k] for k in ("symbol", "score", "basis", "veto")} for c in ranked[:6]]
+        tops = [p["symbol"] for p in (c_top, n_top) if p]
+        order = list(dict.fromkeys(tops + [c["symbol"] for c in ranked]))[:3]
+        self.view["charlie"] = {"reviews": [dict({k: v for k, v in consult[s].items() if k != "factors"}, by=[a for a, d in (("chathan", c_p), ("neeli", n_p)) if s in d])
+                                            for s in order if s in consult]}
+        for s in tops[:1]:
+            ch = consult.get(s)
+            if ch and self.once(("ch", s, ch["call"])):
+                words = {"take": "take it", "skip": "don't take it", "lean": "I'm on the fence"}[ch["call"]]
+                detail = "; ".join(filter(None, [cap(", ".join(ch["pros"][:2])), ("but " if ch["pros"] else "") + ", ".join(ch["cons"][:2]) if ch["cons"] else ""]))
+                self.say("charlie", "weigh", "%s: %s, %d%% confident. %s." % (s, words, ch["confidence"], detail or "Nothing stands out either way"))
 
         # Moothon's ruling
         equity = self.equity()
@@ -424,13 +461,14 @@ class Engine:
             block = "The book is full with %d positions. Nothing new until one closes." % cfg["max_positions"]
 
         pick, best_idea = None, None
+        bar = self.brain.moothon["bar"]   # Moothon's bar moves as he learns
         for cand in ranked:
             sym = cand["symbol"]
             if sym in self.positions or sym in ds["traded"] or any(o["symbol"] == sym for o in queued):
                 continue
             if best_idea is None:
                 best_idea = cand
-            if cand["veto"] or cand["score"] < cfg["take_score"]:
+            if cand["veto"] or cand["score"] < bar:
                 continue
             by_risk = equity * cfg["risk_pct"][cand["basis"]] / 100.0 / cand["risk"]
             by_cap = equity * cfg["position_cap_pct"][cand["basis"]] / 100.0 / cand["entry"]
@@ -440,7 +478,8 @@ class Engine:
                 break
 
         def card(cand):
-            out = {k: cand.get(k) for k in ("symbol", "score", "basis", "entry", "stop", "target", "rr", "note", "veto", "objections")}
+            out = {k: cand.get(k) for k in ("symbol", "score", "base_score", "basis", "entry", "stop", "target", "rr",
+                                            "note", "veto", "objections", "charlie")}
             out["chathan"] = cand["chathan"] and {"conviction": cand["chathan"]["conviction"], "reasons": cand["chathan"]["reasons"]}
             out["neeli"] = cand["neeli"] and {"conviction": cand["neeli"]["conviction"], "reasons": cand["neeli"]["reasons"]}
             return out
@@ -455,6 +494,14 @@ class Engine:
                      reason="Best trade right now. Buying with virtual money at the next bar.")
             self.view["verdict"] = v
             self.say("moothon", "verdict", "Verdict: BUY %s, score %d. %s" % (pick["symbol"], pick["score"], pick["note"]))
+            # A pick he passed on earlier and buys now counts as taken, not as a pass.
+            for book in self.shadows.values():
+                for sh in book:
+                    if sh["symbol"] == pick["symbol"]:
+                        sh["taken"] = True
+            for o in self.pending:
+                if o["kind"] == "shadow" and o["symbol"] == pick["symbol"]:
+                    o["taken"] = True
         else:
             v = {"action": "WAIT"}
             if block:
@@ -465,9 +512,9 @@ class Engine:
                 v["reason"] = "Best idea is %s from Chathan, but I'm passing: %s." % (best_idea["symbol"], best_idea["veto"])
                 if self.once(("veto", best_idea["symbol"])):
                     self.say("moothon", "pass", "Passing on %s. %s." % (best_idea["symbol"], best_idea["veto"]))
-            elif best_idea["score"] < cfg["take_score"]:
+            elif best_idea["score"] < bar:
                 v["reason"] = "Best idea is %s at score %d. My bar is %d, so I wait." % (
-                    best_idea["symbol"], best_idea["score"], cfg["take_score"])
+                    best_idea["symbol"], best_idea["score"], bar)
             else:
                 v["reason"] = "Not enough cash for a sensible position in %s." % best_idea["symbol"]
             if best_idea:
@@ -487,6 +534,10 @@ class Engine:
                 ds["shadowed"][agent].add(top["symbol"])
                 self.pending.append({"kind": "shadow", "agent": agent, "symbol": top["symbol"], "age": 0,
                                      "risk": top["risk"], "rr": top["rr"],
+                                     "charlie": (consult.get(top["symbol"]) or {}).get("confidence"),
+                                     "keys": top.get("keys"),
+                                     "n_obj": [o[2] for o in (reviews.get(top["symbol"]) or []) if len(o) > 2 and o[0] != "severe"],
+                                     "factors": (consult.get(top["symbol"]) or {}).get("factors"),
                                      "taken": top["symbol"] == bought or top["symbol"] in self.positions})
 
     def _mark(self, ts):
@@ -524,8 +575,11 @@ class Engine:
             for a in ("chathan", "neeli"):
                 agents_out[a].update(self.view.get(a) or {})
                 agents_out[a]["open_calls"] = len(self.shadows[a])
-                agents_out[a]["taken"] = sum(1 for o in self.outcomes[a] if o.get("taken"))
+                # How many of Moothon's trades this agent was behind, open ones included
+                backed = [t["basis"] for t in self.trades] + [p["basis"] for p in self.positions.values()]
+                agents_out[a]["taken"] = sum(1 for b in backed if b in (a, "both"))
             agents_out["moothon"].update(self.passes)
+            agents_out["charlie"].update(self.view.get("charlie") or {})
 
             positions = []
             for sym, p in self.positions.items():
@@ -589,6 +643,7 @@ class Engine:
                 "trades": self.trades[-60:][::-1], "feed": self.feed[-80:][::-1],
                 "watch": watch, "chart": chart, "curve": [list(c) for c in curve],
                 "money": {"symbol": self.cur, "rate": self.fx, "code": self.cfg.get("currency", "USD")},
-                "rules": {"take_score": self.cfg["take_score"], "max_positions": self.cfg["max_positions"],
+                "brain": self.brain.summary(),
+                "rules": {"take_score": self.brain.moothon["bar"], "max_positions": self.cfg["max_positions"],
                           "benchmark": self.bench},
             }

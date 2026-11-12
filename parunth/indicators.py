@@ -85,6 +85,9 @@ def features(ctx, warm, bars):
     closes = [b[4] for b in warm] + [b[4] for b in bars]
     recent = (list(warm) + list(bars))[-14:]
     atr5 = sum(b[2] - b[3] for b in recent) / len(recent)
+    tail = closes[-13:]
+    path = sum(abs(tail[k] - tail[k - 1]) for k in range(1, len(tail)))
+    eff = abs(tail[-1] - tail[0]) / path if len(tail) >= 7 and path else None
     profile = ctx["vol_profile"]
     usual = profile[i] if i < len(profile) else 0
     or_ready = len(bars) >= 3
@@ -100,6 +103,7 @@ def features(ctx, warm, bars):
         "vwap": vwap,
         "ema9": ema(closes[-40:], 9),
         "rsi": rsi(closes[-60:]),
+        "eff": eff,   # 1.0 = the last hour went in a straight line, 0 = pure back-and-forth
         "atr5": max(atr5, last * 0.0005),
         "relvol": (cum_v / usual) if usual else None,
         "chg": last / ctx["prev_close"] - 1.0,

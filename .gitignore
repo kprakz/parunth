@@ -12,3 +12,7 @@ __pycache__/
 # Parunth dashboard: downloaded market data and local settings
 data/
 config.json
+
+# Agent avatar pictures: supplied by the user, not ours to publish
+web/avatars/
+.shot.sh

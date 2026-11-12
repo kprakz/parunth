@@ -8,3 +8,7 @@ __pycache__/
 
 # Secrets
 .env
+
+# Parunth dashboard: downloaded market data and local settings
+data/
+config.json

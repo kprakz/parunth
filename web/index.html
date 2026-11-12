@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parunth</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <span class="logo" aria-hidden="true"></span>
+    <div><strong>Parunth</strong><small>Three agents. Virtual money.</small></div>
+  </div>
+  <div class="status" id="status"><span class="dot"></span><span id="statusText">Loading</span></div>
+  <div class="controls">
+    <button id="playBtn" class="btn" type="button">Pause</button>
+    <div class="seg" id="speedSeg" role="group" aria-label="Replay speed">
+      <button type="button" data-speed="1">1x</button>
+      <button type="button" data-speed="6">6x</button>
+      <button type="button" data-speed="30">30x</button>
+      <button type="button" data-speed="1000">Max</button>
+    </div>
+    <form id="restartForm" class="restart">
+      <label><span id="cashLabel">Virtual cash</span> <input id="cashInput" type="number" min="10" step="any" value="100"></label>
+      <label>Start from
+        <select id="sessionsInput">
+          <option value="1">Today</option>
+          <option value="3">3 sessions ago</option>
+          <option value="5" selected>5 sessions ago</option>
+          <option value="10">10 sessions ago</option>
+          <option value="20">20 sessions ago</option>
+          <option value="49">49 sessions ago</option>
+        </select>
+      </label>
+      <button class="btn primary" type="submit">Restart</button>
+    </form>
+  </div>
+  <div class="progress" aria-hidden="true"><i id="progressBar"></i></div>
+</header>
+
+<main id="app" hidden>
+  <section class="hero card">
+    <div class="hero-figure">
+      <div class="label">Virtual portfolio, run by Moothon</div>
+      <div class="hero-value" id="equity">$0</div>
+      <div class="delta" id="equityDelta"></div>
+      <div class="sub" id="equitySub"></div>
+    </div>
+    <div class="hero-chart">
+      <div class="legend" id="curveLegend"></div>
+      <div class="chart" id="curveChart"></div>
+    </div>
+  </section>
+
+  <section class="kpis" id="kpis"></section>
+
+  <h2 class="section-title">The council</h2>
+  <section class="council">
+    <article class="card agent" id="agent-chathan" data-agent="chathan"></article>
+    <article class="card agent" id="agent-neeli" data-agent="neeli"></article>
+    <article class="card agent judge" id="agent-moothon" data-agent="moothon"></article>
+  </section>
+
+  <section class="split">
+    <article class="card">
+      <div class="card-head">
+        <h3 id="chartTitle">Price</h3>
+        <div class="legend" id="priceLegend"></div>
+      </div>
+      <div class="chart tall" id="priceChart"></div>
+      <div class="chips" id="watch"></div>
+    </article>
+    <article class="card">
+      <div class="card-head"><h3>Open positions</h3><span class="hint" id="posHint"></span></div>
+      <div id="positions"></div>
+    </article>
+  </section>
+
+  <section class="split">
+    <article class="card">
+      <div class="card-head"><h3>Closed trades</h3><span class="hint" id="tradeHint"></span></div>
+      <div class="table-wrap" id="trades"></div>
+    </article>
+    <article class="card">
+      <div class="card-head"><h3>What they are saying</h3></div>
+      <div class="feed" id="feed"></div>
+    </article>
+  </section>
+
+  <footer class="foot">
+    Virtual money only. Nothing here can place a real order. Prices are free, delayed 5-minute bars from Yahoo Finance.
+    Orders fill at the next bar's open with slippage. This is a test bench, not financial advice.
+  </footer>
+</main>
+
+<div id="splash" class="splash"><div class="spinner"></div><p id="splashText">Loading market history</p></div>
+<div id="tip" class="tip" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

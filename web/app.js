@@ -238,7 +238,16 @@ function drawPrice() {
 
 /* ---------- faces and 3D coins ---------- */
 const face = (key) => `<span class="face ${key}">${AGENTS[key].letter}</span>`;
-const portrait = (key) => `<div class="who"><span class="mini">${face(key)}</span><div class="nameplate"><b>${AGENTS[key].name}</b><span>trust ${Math.round(S.agents[key].trust)}</span></div></div>`;
+const RIMS = [-6, -4, -2, 0, 2, 4, 6].map((z) => `<i class="rim" style="--z:${z}px"></i>`).join("");
+
+function coin(key, size, icon) {
+  const t = S.agents[key].trust;
+  return `<div class="coin-wrap ${size}" data-agent="${key}" style="--trust:${t};--lag:${AGENTS[key].lag}s" title="Hover to flip. The ring is the trust score.">` +
+    `<div class="tilt"><div class="coin">${RIMS}<div class="side front">${face(key)}<span class="gloss"></span></div>` +
+    `<div class="side back"><b>${Math.round(t)}</b><small>TRUST</small></div></div></div>` +
+    `<span class="floor"></span><span class="mood">${ico(icon)}</span></div>` +
+    `<div class="nameplate"><b>${AGENTS[key].name}</b><span>${AGENTS[key].tag}</span></div>`;
+}
 
 /* ---------- the council: two pitch, Charlie weighs, Moothon rules ---------- */
 let seen = { trades: null, held: null, start: null, keys: {} };
@@ -249,12 +258,14 @@ function setBubble(id, html) {
   el.classList.remove("pop"); void el.offsetWidth; el.classList.add("pop");
 }
 
-function react(agent, key, how) {
-  // One short reaction from the 3D character when an agent's stance changes.
-  const was = seen.keys[agent];
-  seen.keys[agent] = key;
+function react(id, key, how) {
+  // One short reaction when an agent's stance changes (not on the first look).
+  const was = seen.keys[id];
+  seen.keys[id] = key;
   if (was === undefined || was === key || !how || S.speed >= 1000) return;
-  if (window.Floor) window.Floor.react(agent, how);
+  const w = $(id).querySelector(".coin-wrap");
+  if (!w) return;
+  w.classList.remove("jump", "shake", "nod"); void w.offsetWidth; w.classList.add(how);
 }
 
 function burst(text, good) {
@@ -282,8 +293,8 @@ function renderStage() {
   const exiting = S.positions.find((p) => p.advice.kind === "exit");
 
   // Chathan: always selling something
-  setHTML($("st-chathan"), portrait("chathan"));
-  react("chathan", c.pitch ? c.pitch.symbol : "", c.pitch ? "jump" : null);
+  setHTML($("st-chathan"), `<div class="who">${coin("chathan", "small", c.pitch ? "flame" : "moon")}</div>`);
+  react("st-chathan", c.pitch ? c.pitch.symbol : "", c.pitch ? "jump" : null);
   setBubble("bub-chathan", c.pitch
     ? `<div class="lead">${esc(c.pitch.symbol)}! ${c.pitch.conviction}% sure, let's go!</div>${nums(c.pitch)}${esc(capFirst(c.pitch.reasons.slice(0, 3).join(", ")))}.` +
       (c.count > 1 ? ` <span class="hint">+${c.count - 1} more I like.</span>` : "")
@@ -301,15 +312,15 @@ function renderStage() {
     says = `<div class="lead">Not ${esc(n.doubt.symbol)} for me.</div>${esc(capFirst(n.doubt.all.slice(0, 3).join("; ")))}.`;
     tk = ticket("var(--bear)", `${ico("x")} ${esc(n.doubt.symbol)}`, "Neeli objects");
   }
-  setHTML($("st-neeli"), portrait("neeli"));
-  react("neeli", key, how);
+  setHTML($("st-neeli"), `<div class="who">${coin("neeli", "small", n.pitch ? "check" : n.doubt ? "x" : "eye")}</div>`);
+  react("st-neeli", key, how);
   setBubble("bub-neeli", says);
   setHTML($("track-neeli"), tk);
 
   // Charlie: a weight on every idea
   const reviews = ch.reviews || [];
-  setHTML($("st-charlie"), portrait("charlie"));
-  react("charlie", reviews.map((r) => r.symbol + r.call).join(), reviews.length ? "nod" : null);
+  setHTML($("st-charlie"), coin("charlie", "", "scale"));
+  react("st-charlie", reviews.map((r) => r.symbol + r.call).join(), reviews.length ? "nod" : null);
   setHTML($("weights"), reviews.length ? reviews.map((r) => {
     const take = r.confidence >= 50, left = Math.min(50, r.confidence), width = Math.abs(r.confidence - 50);
     return `<div class="weigh"><div class="weigh-top"><b>${esc(r.symbol)}</b><span class="hint">from ${r.by.map((a) => AGENTS[a].name).join(" + ")}</span>` +
@@ -346,8 +357,8 @@ function renderStage() {
     mkey = (veto ? "v" : "w") + (v.idea ? v.idea.symbol : "");
     word = esc(v.reason) + (v.idea ? voices(v.idea) : "");
   }
-  setHTML($("st-moothon"), portrait("moothon"));
-  react("moothon", mkey, mhow);
+  setHTML($("st-moothon"), coin("moothon", "big", exiting ? "exit" : v && v.action === "BUY" ? "check" : "scale"));
+  react("st-moothon", mkey, mhow);
   setHTML($("stamp"), stamp);
   setBubble("bub-moothon", word);
 
@@ -357,7 +368,10 @@ function renderStage() {
     if (acct.n > seen.trades && S.trades.length) {
       const t = S.trades[0], won = t.pnl >= 0;
       burst(`${t.symbol} ${scash(t.pnl)}`, won);
-      if (window.Floor) window.Floor.react("moothon", won ? "jump" : "shake");
+      if (!won) {
+        const w = $("st-moothon").querySelector(".coin-wrap");
+        if (w) { w.classList.remove("nod", "jump"); void w.offsetWidth; w.classList.add("shake"); }
+      }
     } else if (held !== seen.held && held.length > (seen.held || "").length) {
       const fresh = S.positions.find((p) => !(seen.held || "").split(",").includes(p.symbol));
       if (fresh) burst("Bought " + fresh.symbol, true);
@@ -443,8 +457,7 @@ function renderBoard() {
       <span class="bar"><i style="width:${Math.max(4, Math.abs(w.chg) / top * 100).toFixed(0)}%"></i></span></button>`;
   };
   const bulls = W.filter((w) => w.chg >= 0), bears = W.filter((w) => w.chg < 0).reverse();
-  const tally = `<span>Bullish<b class="up">${bulls.length}</b></span><span>Bearish<b class="down">${bears.length}</b></span>`;
-  setHTML($("tally"), tally); setHTML($("tally2"), tally);
+  setHTML($("tally"), `<span>Bullish<b class="up">${bulls.length}</b></span><span>Bearish<b class="down">${bears.length}</b></span>`);
   setHTML($("tiles-bull"), bulls.length ? bulls.map((w, i) => tile(w, i, false)).join("") : '<div class="empty">Nothing is up today.</div>');
   setHTML($("tiles-bear"), bears.length ? bears.map((w, i) => tile(w, i, true)).join("") : '<div class="empty">Nothing is down today.</div>');
 }
@@ -574,7 +587,6 @@ function render() {
   renderHero(); renderKpis(); renderStage(); renderBoard(); renderPositions(); renderScoreboard(); renderTrades(); renderFeed();
   renderTape(); renderMinds();
   drawCurve(); drawPrice();
-  if (window.Floor) window.Floor.update(S, focus);
 }
 
 /* ---------- wiring ---------- */
@@ -607,7 +619,6 @@ document.querySelector(".board").addEventListener("click", (e) => {
   focus = b.dataset.sym || null; poll();
 });
 $("followBtn").addEventListener("click", () => { focus = null; poll(); });
-window.addEventListener("floor:pick", (e) => { focus = e.detail || null; poll(); });
 window.addEventListener("resize", () => { if (S && S.account) { drawCurve(); drawPrice(); } });
 
 // The coins lean toward the pointer while it is over the council.

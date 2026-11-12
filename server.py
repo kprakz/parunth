@@ -25,8 +25,6 @@ STATIC = {
     "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "application/javascript; charset=utf-8"),
-    "/scene.js": ("scene.js", "application/javascript; charset=utf-8"),
-    "/vendor/three.module.min.js": ("vendor/three.module.min.js", "application/javascript; charset=utf-8"),
 }
 AVATARS = {"/avatars/%s.jpg" % name: "%s.jpg" % name for name in ("chathan", "neeli", "charlie", "moothon")}
 CURRENCY_SYMBOLS = {"USD": "$", "GBP": "\u00a3", "EUR": "\u20ac", "INR": "\u20b9"}
@@ -179,7 +177,7 @@ def make_handler(runner):
             if url.path in STATIC:
                 name, ctype = STATIC[url.path]
                 with open(os.path.join(WEB, name), "rb") as fh:
-                    return self._send(200, fh.read(), ctype, "max-age=86400" if name.startswith("vendor/") else "no-store")
+                    return self._send(200, fh.read(), ctype)
             if url.path in AVATARS:   # optional pictures; the page falls back to initials
                 path = os.path.join(WEB, "avatars", AVATARS[url.path])
                 if os.path.exists(path):

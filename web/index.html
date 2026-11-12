@@ -41,44 +41,25 @@
 <div class="tape" aria-label="Live prices"><div class="tape-run" id="tapeRun"></div></div>
 
 <main id="app" hidden>
-  <section class="floor">
-    <aside class="card comms">
-      <div class="card-head"><h2>Live comms</h2><span class="hint">The agents, as they speak</span></div>
-      <div class="feed" id="feed"></div>
-    </aside>
-
-    <article class="card scene-card">
-      <div class="card-head">
-        <h2>The floor</h2>
-        <div class="tally" id="tally"></div>
-      </div>
-      <div class="scene" id="scene">
-        <div id="sceneLabels"></div>
-        <div class="fx" id="fx" aria-hidden="true"></div>
-        <p class="no3d-note">The 3D floor needs WebGL, which this browser has switched off.</p>
-      </div>
-      <p class="hint scene-key">The dome glows green when most of the watchlist is up and red when most is down. Each spike is a stock; longer means a bigger move. Lines of light show who is pointing at what. Click a stock to chart it.</p>
-    </article>
-
-    <aside class="stack">
-      <article class="card hero">
-        <div class="label">Virtual portfolio / run by Moothon</div>
-        <div class="hero-value" id="equity">0</div>
-        <div class="delta" id="equityDelta"></div>
-        <div class="sub" id="equitySub"></div>
-      </article>
-      <article class="card">
-        <div class="legend" id="curveLegend"></div>
-        <div class="chart short" id="curveChart"></div>
-      </article>
-      <article class="card strip" id="kpis" aria-label="Portfolio statistics"></article>
-    </aside>
+  <section class="card hero">
+    <div class="hero-figure">
+      <div class="label">Virtual portfolio / run by Moothon</div>
+      <div class="hero-value" id="equity">0</div>
+      <div class="delta" id="equityDelta"></div>
+      <div class="sub" id="equitySub"></div>
+    </div>
+    <div class="hero-chart">
+      <div class="legend" id="curveLegend"></div>
+      <div class="chart" id="curveChart"></div>
+    </div>
   </section>
+
+  <section class="card strip" id="kpis" aria-label="Portfolio statistics"></section>
 
   <section class="card stage" id="stage" aria-label="The council">
     <div class="card-head">
       <h2>The council</h2>
-      <span class="hint">Chathan and Neeli pitch. Charlie weighs each idea. Moothon rules.</span>
+      <span class="hint">Chathan and Neeli pitch. Charlie weighs each idea. Moothon rules. Hover a coin to flip it.</span>
     </div>
     <div class="stage-grid">
       <div class="col pitchers">
@@ -89,22 +70,24 @@
       <div class="lane" id="lane-a" aria-hidden="true"><div class="track" id="track-chathan"></div><div class="track" id="track-neeli"></div></div>
       <div class="col" data-agent="charlie">
         <h3>02 / Charlie weighs</h3>
-        <div class="actor row"><div id="st-charlie"></div><div id="weights"></div></div>
+        <div class="actor"><div id="st-charlie"></div></div>
+        <div id="weights"></div>
       </div>
       <div class="lane" id="lane-b" aria-hidden="true"><div class="track" id="track-charlie"></div></div>
       <div class="col" data-agent="moothon">
         <h3>03 / Moothon rules</h3>
-        <div class="actor row"><div id="st-moothon"></div><div class="bubble" id="bub-moothon"></div></div>
-        <div id="stamp"></div>
+        <div class="actor"><div id="st-moothon"></div><div id="stamp"></div></div>
+        <div class="bubble" id="bub-moothon"></div>
       </div>
     </div>
+    <div class="fx" id="fx" aria-hidden="true"></div>
   </section>
 
   <section class="split wide-left">
     <article class="card board">
       <div class="card-head">
         <h2>Market board</h2>
-        <div class="tally" id="tally2"></div>
+        <div class="tally" id="tally"></div>
       </div>
       <div class="tiles" id="tiles-bull"></div>
       <div class="rule" aria-hidden="true"></div>
@@ -141,9 +124,15 @@
     </article>
   </section>
 
-  <section class="card">
-    <div class="card-head"><h2>Closed trades</h2><span class="hint" id="tradeHint"></span></div>
-    <div class="table-wrap tall" id="trades"></div>
+  <section class="split">
+    <article class="card">
+      <div class="card-head"><h2>Closed trades</h2><span class="hint" id="tradeHint"></span></div>
+      <div class="table-wrap tall" id="trades"></div>
+    </article>
+    <article class="card">
+      <div class="card-head"><h2>Comms</h2><span class="hint">What the agents are saying</span></div>
+      <div class="feed" id="feed"></div>
+    </article>
   </section>
 
   <footer class="foot">
@@ -155,6 +144,5 @@
 <div id="splash" class="splash"><div class="spinner"></div><p id="splashText">Loading market history</p></div>
 <div id="tip" class="tip" hidden></div>
 <script src="app.js"></script>
-<script type="module" src="scene.js"></script>
 </body>
 </html>

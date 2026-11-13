@@ -21,7 +21,9 @@ python3 server.py
 Then open http://127.0.0.1:8765. It needs Python 3.9 or newer and nothing else.
 
 The dashboard replays the last few sessions bar by bar, then carries on live when it
-reaches the present. Use the top bar to pause, change the replay speed, or restart
+reaches the present. The run (account, trust scores, lessons) is saved in `data/state.json`
+as it goes, so stopping and starting the server continues where it left off. Press Restart,
+or start with `python3 server.py --fresh`, to begin a new run. Use the top bar to pause, change the replay speed, or restart
 with a different amount of virtual cash and a different starting day.
 
 ## Test it

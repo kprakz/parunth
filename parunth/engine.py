@@ -201,13 +201,9 @@ class Engine:
             self.cursor += 1
             return True
 
-    def _rollover(self, day, ts):
-        carried = list(self.positions)
-        self.day = day
+    def _prepare_day(self, day):
+        """Background for one day, from earlier days only: trend, usual volume, warm-up bars."""
         self.today = {s: [] for s in self.symbols + [self.bench]}
-        self.daystate = {"first": ts, "realized": 0.0, "start_equity": self.equity(),
-                         "traded": set(), "noted": set(),
-                         "shadowed": {"chathan": set(), "neeli": set()}}
         for sym in self.symbols + [self.bench]:
             days = self.bydate.get(sym, {})
             earlier = [d for d in sorted(days) if d < day]
@@ -219,6 +215,14 @@ class Engine:
             prior = [daily[d] for d in sorted(daily) if d < day]
             self.ctx[sym] = day_context(prior, [days[d] for d in earlier[-10:]])
             self.warm[sym] = days[earlier[-1]][-30:] if earlier else []
+
+    def _rollover(self, day, ts):
+        carried = list(self.positions)
+        self.day = day
+        self.daystate = {"first": ts, "realized": 0.0, "start_equity": self.equity(),
+                         "traded": set(), "noted": set(),
+                         "shadowed": {"chathan": set(), "neeli": set()}}
+        self._prepare_day(day)
         label = datetime.date.fromisoformat(day).strftime("%a %d %b")
         self.say("system", "day", "New session: %s" % label)
         for sym in carried:   # only happens if a session ended without a final bar
@@ -548,6 +552,51 @@ class Engine:
         self.peak = max(self.peak, eq)
         if self.peak > 0:
             self.max_dd = max(self.max_dd, (self.peak - eq) / self.peak)
+
+    # ------------------------------------------------------- save and load
+
+    SAVED = ("start_cash", "cash", "positions", "pending", "trades", "feed", "shadows", "outcomes", "trust",
+             "trust_hist", "passes", "day", "last_px", "view", "now", "bench_start", "peak", "max_dd", "seq")
+
+    def dump(self):
+        """Everything needed to carry on later, as plain JSON-safe data."""
+        with self.lock:
+            out = {k: getattr(self, k) for k in self.SAVED}
+            ds = self.daystate
+            out["daystate"] = ds and {"first": ds["first"], "realized": ds["realized"], "start_equity": ds["start_equity"],
+                                      "traded": sorted(ds["traded"]), "noted": [list(k) for k in ds["noted"]],
+                                      "shadowed": {a: sorted(v) for a, v in ds["shadowed"].items()}}
+            out["curve"] = self.curve[-6000:]
+            out["brain"] = self.brain.dump()
+            out["last_ts"] = self.timeline[self.cursor - 1] if self.cursor > 0 else None
+            out["start_ts"] = self.timeline[self.start_idx] if self.start_idx < len(self.timeline) else None
+            out["fx"], out["cur"], out["version"] = self.fx, self.cur, 1
+            return out
+
+    def restore(self, d):
+        """Pick a saved run back up. Bars that arrived while we were away are still ahead of the cursor."""
+        if d.get("version") != 1:
+            raise ValueError("saved run is from a different version")
+        with self.lock:
+            for k in self.SAVED:
+                setattr(self, k, d[k])
+            self.curve = [tuple(c) for c in d["curve"]]
+            self.brain = Brain.load(self.cfg, d["brain"])
+            self.fx, self.cur = d["fx"], d["cur"]
+            ds = d["daystate"]
+            self.daystate = ds and {"first": ds["first"], "realized": ds["realized"], "start_equity": ds["start_equity"],
+                                    "traded": set(ds["traded"]), "noted": set(tuple(k) for k in ds["noted"]),
+                                    "shadowed": {a: set(v) for a, v in ds["shadowed"].items()}}
+            last = d["last_ts"]
+            self.cursor = bisect.bisect_right(self.timeline, last) if last is not None else 0
+            self.start_idx = bisect.bisect_left(self.timeline, d["start_ts"]) if d["start_ts"] is not None else 0
+            self.last_feats = {}
+            if self.day and last is not None:   # rebuild what today looked like at the last bar we saw
+                self._prepare_day(self.day)
+                for sym in self.symbols + [self.bench]:
+                    if self.ctx.get(sym):
+                        self.today[sym] = [b for b in self.bydate.get(sym, {}).get(self.day, []) if b[0] <= last]
+                self.last_feats = {s: features(self.ctx[s], self.warm[s], bars) for s, bars in self.today.items() if bars}
 
     # -------------------------------------------------------------- snapshot
 

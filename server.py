@@ -20,6 +20,7 @@ from parunth.engine import Engine
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(ROOT, "web")
+STATE = os.path.join(ROOT, "data", "state.json")   # the run's memory; data/ is never committed
 STATIC = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/index.html": ("index.html", "text/html; charset=utf-8"),
@@ -33,9 +34,13 @@ CURRENCY_SYMBOLS = {"USD": "$", "GBP": "\u00a3", "EUR": "\u20ac", "INR": "\u20b9
 class Runner(threading.Thread):
     """Owns the engine and moves it forward."""
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, fresh=False):
         super().__init__(daemon=True)
         self.cfg = cfg
+        self.fresh = fresh          # ignore any saved run and start over
+        self.saved_at = 0.0
+        self.saved_cursor = -1
+        self.resumed = False
         self.engine = None
         self.status = "loading"
         self.message = "Starting up"
@@ -82,12 +87,39 @@ class Runner(threading.Thread):
         engine = Engine(self.cfg)
         engine.load(history)
         engine.reset_book(self.cfg["start_cash"] * self.cfg["fx_rate"], self.sessions_back)
+        if not self.fresh and os.path.exists(STATE):
+            try:
+                with open(STATE, encoding="utf-8") as fh:
+                    saved = json.load(fh)
+                engine.restore(saved["engine"])
+                self.sessions_back = saved.get("sessions_back", self.sessions_back)
+                self.resumed = True
+                engine.say("system", "day", "Picked up where the last run stopped. Account, trust scores and lessons are as they were.")
+            except (ValueError, KeyError, TypeError, OSError) as e:   # a bad save must not stop the app
+                engine.reset_book(self.cfg["start_cash"] * self.cfg["fx_rate"], self.sessions_back)
+                engine.say("system", "day", "Could not read the saved run (%s). Started a new one." % e)
         self.engine = engine
         self.last_poll = time.time()
         self.status, self.message = "replay", ""
 
+    def save(self, force=False):
+        """Write the run to disk: after every live bar, and every few seconds during a replay."""
+        eng = self.engine
+        if not eng or (eng.cursor == self.saved_cursor and not force):
+            return
+        if not force and eng.has_next() and time.time() - self.saved_at < 5:
+            return
+        data = {"engine": eng.dump(), "sessions_back": self.sessions_back, "saved": time.time()}
+        os.makedirs(os.path.dirname(STATE), exist_ok=True)
+        tmp = STATE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, separators=(",", ":"))
+        os.replace(tmp, STATE)
+        self.saved_at, self.saved_cursor = time.time(), eng.cursor
+
     def _tick(self):
         eng = self.engine
+        self.save()
         if self.paused:
             time.sleep(0.1)
             return
@@ -141,11 +173,12 @@ class Runner(threading.Thread):
             self.engine.reset_book(cash * fx, self.sessions_back)
             self.announced_live = False
             self.paused = False
+            self.save(force=True)   # a restart replaces the saved run
         else:
             raise ValueError("unknown action")
 
     def state(self, focus):
-        base = {"status": self.status, "message": self.message, "speed": self.speed,
+        base = {"status": self.status, "message": self.message, "speed": self.speed, "resumed": self.resumed,
                 "paused": self.paused, "sessions_back": self.sessions_back,
                 "skipped": sorted(self.errors)}
         if self.engine:
@@ -203,17 +236,19 @@ def main():
     ap = argparse.ArgumentParser(description="Parunth: three agents, virtual money.")
     ap.add_argument("--port", type=int)
     ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--fresh", action="store_true", help="ignore the saved run and start a new one")
     args = ap.parse_args()
     cfg = config.load()
     port = args.port or cfg["port"]
-    runner = Runner(cfg)
+    runner = Runner(cfg, fresh=args.fresh)
     runner.start()
     server = ThreadingHTTPServer((args.host, port), make_handler(runner))
     print("Parunth is running at http://%s:%d  (Ctrl+C to stop)" % (args.host, port))
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nStopped.")
+        runner.save(force=True)
+        print("\nStopped. The run is saved and will continue next time.")
 
 
 if __name__ == "__main__":

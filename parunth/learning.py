@@ -37,6 +37,15 @@ class Record:
         self.total = self.total * FADE + max(-1.5, min(3.0, r))
         self.count += 1
 
+    def dump(self):
+        return [self.n, self.total, self.count]
+
+    @classmethod
+    def load(cls, row):
+        rec = cls()
+        rec.n, rec.total, rec.count = float(row[0]), float(row[1]), int(row[2])
+        return rec
+
     @property
     def mean(self):
         return self.total / self.n if self.n else 0.0
@@ -55,6 +64,31 @@ class Brain:
         self.moothon = {"bar": cfg["take_score"], "since": 0}
         self.lessons = []
         self._said = {}
+
+    # ------------------------------------------------------- save and load
+
+    def dump(self):
+        recs = lambda mind: {k: r.dump() for k, r in mind["rec"].items()}
+        return {
+            "chathan": {"w": self.chathan["w"], "bar": self.chathan["bar"], "recent": self.chathan["recent"], "rec": recs(self.chathan)},
+            "neeli": {"waived": sorted(self.neeli["waived"]), "rec": recs(self.neeli)},
+            "charlie": {"w": self.charlie["w"], "rec": recs(self.charlie)},
+            "moothon": dict(self.moothon),
+            "lessons": self.lessons,
+            "said": [[who, key, band] for (who, key), band in self._said.items()],
+        }
+
+    @classmethod
+    def load(cls, cfg, d):
+        b = cls(cfg)
+        recs = lambda rows: {k: Record.load(v) for k, v in rows.items()}
+        b.chathan = {"w": dict(d["chathan"]["w"]), "bar": d["chathan"]["bar"], "recent": list(d["chathan"]["recent"]), "rec": recs(d["chathan"]["rec"])}
+        b.neeli = {"waived": set(d["neeli"]["waived"]), "rec": recs(d["neeli"]["rec"])}
+        b.charlie = {"w": dict(d["charlie"]["w"]), "rec": recs(d["charlie"]["rec"])}
+        b.moothon = dict(d["moothon"])
+        b.lessons = list(d["lessons"])
+        b._said = {(who, key): band for who, key, band in d["said"]}
+        return b
 
     # ------------------------------------------------------------- helpers
 

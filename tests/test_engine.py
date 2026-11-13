@@ -272,6 +272,24 @@ class Simulation(unittest.TestCase):
         self.assertEqual(sum(1 for t in self.eng.trades if t["basis"] == "both") + len(self.eng.trades),
                          snap["agents"]["chathan"]["taken"] + snap["agents"]["neeli"]["taken"])
 
+    def test_a_saved_run_continues_exactly_as_if_it_never_stopped(self):
+        import json
+        part = make_engine()
+        for _ in range(len(part.timeline) // 2 + 17):   # stop mid-session, with positions and picks open
+            if part.cursor - part.start_idx >= 400:
+                break
+            part.step()
+        saved = json.loads(json.dumps(part.dump()))      # through real JSON, as on disk
+        again = make_engine()
+        again.restore(saved)
+        self.assertEqual(again.cursor, part.cursor)
+        run(again)
+        self.assertAlmostEqual(again.equity(), self.eng.equity(), places=6)
+        self.assertEqual(len(again.trades), len(self.eng.trades))
+        self.assertEqual(again.trust, self.eng.trust)
+        self.assertEqual(again.brain.summary(), self.eng.brain.summary())
+        self.assertEqual([m["text"] for m in again.feed[-40:]], [m["text"] for m in self.eng.feed[-40:]])
+
     def test_limits_hold(self):
         cfg = self.eng.cfg
         eng = make_engine()
